@@ -1,10 +1,15 @@
-#define _GNU_SOURCE
+/* setjmp/longset
+ * universal sig process
+ * epoll
+ */
+#define _GNU_SOURCE /* needed for splice */
 #include <fcntl.h>
 #include <stdio.h>
 #include <errno.h>
 #include <assert.h>
 #include <signal.h>
 #include <unistd.h>
+#include <setjmp.h>
 #include <libgen.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -38,6 +43,7 @@ int set_nonblockfd(int fd)
 int main(int argc, char* argv[])
 {
 	int signo;
+	jmp_buf jmp_flag;
 	int ret, epret, i, not_stop;
 	int pipefd[1];
 	int fd, epfd, connfd, sockfd;
@@ -48,13 +54,16 @@ int main(int argc, char* argv[])
 	struct sigaction sact;
 	
 	not_stop = 1;
-	/* daemonize *
+	/* daemonize
 	ret = daemon(0, 0);
 	assert(ret == 0);
 	*/
 	sact.sa_handler = sig_handle;
+	sact.sa_flags = SA_NOCLDSTOP|~SA_RESETHAND;
 	sigfillset(&sact.sa_mask);
 	ret = sigaction(SIGINT, &sact, NULL);
+	assert(ret != -1);
+	ret = sigaction(SIGTERM, &sact, NULL);
 	assert(ret != -1);
 
 	ret = socketpair(AF_UNIX, SOCK_STREAM, 0, sockpipefd);
@@ -99,6 +108,10 @@ int main(int argc, char* argv[])
 	bzero(&clnt_addr, sizeof(clnt_addr));
 	socklen_t clnt_addrlen = sizeof(clnt_addr);
 	
+	if(setjmp(jmp_flag)) {
+		/* get sigterm then restart to re-read config */
+		printf("restarted !\n");
+	}
 	while(not_stop) {
 		epret = epoll_wait(epfd, evnts, MAX_EVENTS, -1);
 		for(i=0; i<epret; i++) {
@@ -128,6 +141,7 @@ int main(int argc, char* argv[])
 					break;
 				case SIGTERM:
 					printf("SIGTERM: %d\n", signo);
+					longjmp(jmp_flag, 2);
 					break;
 				default:
 					printf("Unknow\n");
@@ -146,13 +160,14 @@ int main(int argc, char* argv[])
 				if(ret < 0) {
 					perror("send");
 				}
-				/* use EPOLL_CTL_MOD after EPOLLOUT to recv EPOLLOUT, but do not do it this way
+				/* use EPOLL_CTL_MOD after EPOLLOUT to recv EPOLLOUT again, but do not do it this way
 				evnt.data.fd = fd;
 				evnt.events = EPOLLET|EPOLLIN|EPOLLOUT|EPOLLRDHUP|EPOLLERR|EPOLLHUP|EPOLLPRI;
 				ret = epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &evnt);
 				if(ret < 0) {
 					perror("epoll_ctl error");
-				} */
+				}
+				*/
 			} else if(evnts[i].events&EPOLLRDHUP) {
 				printf("EPOLLRDHUP:\n");
 			} else if(evnts[i].events&EPOLLPRI) {
