@@ -9,19 +9,21 @@
 
 int main(int argc, char** argv)
 {
-	char arg_key[BUFFLEN];
-	char buf_data[BUFFLEN];
 	DB_ENV *db_env;
 	DB *dbp;
-	DBT key, data, get_data;
-	int ret,t_ret;
+	DBT key, get_data;
+	int ret, t_ret;
 	u_int32_t env_flags;
 
+	memset(&key, 0, sizeof(key));
+	memset(&get_data, 0, sizeof(get_data)); 
 	if( argc == 2) {
-		strcpy(arg_key, argv[1]);
+		key.data = argv[1];
+		key.size = strlen(argv[1]);
 	}
 	else {
-		strcpy(arg_key, "key_00001");
+		key.data = "key_00001";
+		key.size = strlen("key_00001");
 	}
 
 	/* Create an environment object and initialize it for error reporting */
@@ -50,13 +52,6 @@ int main(int argc, char** argv)
 		exit (1);
 	}
 
-	memset(&key, 0, sizeof(key));
-	memset(&data, 0, sizeof(data)); 
-	memset(&get_data, 0, sizeof(get_data)); 
-	key.data = arg_key;
-	key.size = strlen(arg_key);
-	get_data.data = buf_data;
-	data.size = sizeof(buf_data);
 	
 	/* get data */
 	ret = dbp->get(dbp, NULL, &key, &get_data, 0);
